@@ -1,0 +1,12 @@
+applications:
+- path: .
+  memory: 512M
+  instances: 1
+  domain: eu-gb.mybluemix.net
+  name: carnet
+  host: carnet
+  disk_quota: 1024M
+  services:
+  - carnet-cloudantNoSQLDB
+  - carnet-imfpush
+  - carnet-AdvancedMobileAccess
