@@ -4,11 +4,15 @@
   "description": "A template Mobile Backend application",
   "dependencies": {
     "async": "^1.5.0",
+    "body-parser": "^1.14.2",
     "cloudant": "^1.4.0",
     "express": "4.*",
+    "ibmbluemix": "^1.0.0",
+    "ibmpush": "^1.0.0",
     "imf-oauth-user-sdk": "*",
     "passport": "*",
-    "passport-imf-token-validation": "*"
+    "passport-imf-token-validation": "*",
+    "request": "^2.67.0"
   },
   "engines": {
     "node": "4.2.3"

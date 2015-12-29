@@ -8,12 +8,25 @@
 
 "use strict";
 
+//ToDO: Only for local development
+//process.env = require("./env.json");
+
 var express = require('express');
+var bodyParser = require('body-parser');
 var passport = require('passport');
+var request = require('request');
+var async = require("async");
 var ImfBackendStrategy = require('passport-imf-token-validation').ImfBackendStrategy;
 var imf = require('imf-oauth-user-sdk');
-var async = require("async");
+var ibmbluemix = require('ibmbluemix');
+var ibmpush = require('ibmpush');
+
 var geo = require("./geo-calc");
+
+var app = express();
+
+app.use(bodyParser.urlencoded());
+app.use(bodyParser.json());
 
 try {
 	passport.use(new ImfBackendStrategy());
@@ -21,11 +34,10 @@ try {
 	console.log(e);
 }
 
-var app = express();
 app.use(passport.initialize());
 
 //redirect to mobile backend applica-tion doc page when accessing the root context
-app.get('/', function(req, res){
+app.get('/', function(req, res) {
 	res.sendfile('public/index.html');
 });
 
@@ -37,7 +49,7 @@ app.use("/protected", passport.authenticate('imf-backend-strategy', {session: fa
 app.use("/protected", express.static(__dirname + '/protected'));
 
 // create a backend service endpoint
-app.get('/publicServices/generateToken', function(req, res){
+app.get('/publicServices/generateToken', function(req, res) {
 		// use imf-oauth-user-sdk to get the authorization header, which can be used to access the protected resource/endpoint by imf-backend-strategy
 		imf.getAuthorizationHeader().then(function(token) {
 			res.send(200, token);
@@ -61,17 +73,61 @@ var password = "1b2f3ea175e745f689de62da9df0675082897c3653f477785a94fe8046e285fe
 var cloudant = Cloudant({account:username, password:password});
 var db = cloudant.db.use("carnetdb");
 
-app.get("/update-my-location/:id", (req, res)=>{
+app.post("/create-account", (req, res)=>{
+	res.setHeader('Content-Type', 'application/json');
 
-	var currLon = parseFloat(req.query.lon);
-	var currLat = parseFloat(req.query.lat);
+	var deviceID = req.body.deviceID;
+	var email    = req.body.email;
+	var make     = req.body.make;
+	var model    = req.body.model;
 
 	async.waterfall([
 		(next)=>{
-			db.get(req.params.id, (err, data)=>{
+			db.find({selector: {email: email}}, (err, data)=>{
 				next(err, data)
 			});
+		}
+	],
+	(err, result)=>{
+		if(result && result.docs.length){
+			res.end(JSON.stringify({err: "Account already exists"}));
+		}else{
+			db.insert({
+				deviceID: deviceID,
+				email: email,
+				make: make,
+				model: model
+			}, (err, body)=>{
+				if(err){
+					res.status(500);
+					res.end(JSON.stringify({err: "Internal Error"}));
+				}else{
+					res.end(JSON.stringify({success: true}));
+				}
+			})
+		}
+	});
+});
+
+app.put("/update-location", (req, res)=>{
+	res.setHeader('Content-Type', 'application/json');
+
+	var deviceID = req.body.deviceID;
+	var currLon = parseFloat(req.body.lon);
+	var currLat = parseFloat(req.body.lat);
+
+	async.waterfall([
+		//Find doc by device Id
+		(next)=>{
+			db.find({selector: {deviceID: deviceID}}, (err, data)=>{
+				if(data.docs.length) {
+					next(err, data.docs[0])
+				}else{
+					res.end(JSON.stringify({err: "device not found"}));
+				}
+			});
 		},
+		//Update new coordinates
 		(doc, next)=>{
 			if(doc.geometry){
 				doc.prevCoordinates = {
@@ -97,14 +153,16 @@ app.get("/update-my-location/:id", (req, res)=>{
 				next(err, data, doc)
 			})
 		},
+		//Find cars within 100 meters
 		(data, doc, next)=>{
 			cloudant.request({
 				db: "carnetdb",
-				path: `_design/geodd/_geo/geoidx?lat=${req.query.lat}&lon=${req.query.lon}&radius=100&include_docs=true`
+				path: `_design/geodd/_geo/geoidx?lat=${currLat}&lon=${currLon}&radius=100&include_docs=true`
 			}, (err, data)=>{
 				next(err, data , doc)
 			});
 		},
+		//Determine cars position relatively to current car
 		(data, doc, next)=>{
 			var dirAngle = geo.angleFromCoordinate(doc.prevCoordinates.lat, doc.prevCoordinates.lon, currLat, currLon);
 			var tCurrLoc = geo.rotatePoint({lon: currLon, lat: currLat}, doc.prevCoordinates, dirAngle);
@@ -120,65 +178,157 @@ app.get("/update-my-location/:id", (req, res)=>{
 				results.push(carDoc);
 
 				let tCarLoc = geo.rotatePoint({lon: carDoc.geometry.coordinates[0],
-					 						   lat:  carDoc.geometry.coordinates[1]},
+					 						   lat: carDoc.geometry.coordinates[1]},
 					                           doc.prevCoordinates, dirAngle);
 
-				carDoc.keys = [];
+				carDoc.position = [];
 
 				if(tCarLoc.lat > tCurrLoc.lat){
-					carDoc.keys.push("front")
+					carDoc.position.push("front")
 				}else{
-					carDoc.keys.push("back")
+					carDoc.position.push("back")
 				}
 
 				if(tCarLoc.lon > tCurrLoc.lon){
-					carDoc.keys.push("right")
+					carDoc.position.push("right")
 				}else{
-					carDoc.keys.push("left")
+					carDoc.position.push("left")
 				}
 			}
 
 			next(null, results)
 		}
 	], (err, result)=>{
-		res.setHeader('Content-Type', 'application/json');
-		res.end(JSON.stringify(result));
+		res.end(JSON.stringify({ cars: result}));
 	});
-
-	//var doc = {
-	//	geometry: {
-	//		type: "Point",
-	//		coordinates: [
-	//			30.422084033489224,
-	//			50.34579931822534
-	//		]
-	//	}
-	//};
-	//db.insert(doc, (err, body, header)=>{
-	//	if(!err){
-	//		res.write(JSON.stringify(body));
-	//	}
-	//	res.end();
-	//});
-
 });
 
-//app.get("/update-car-location-data", application.updateCarLocationAction);
-//app.get("/pass", (req, res)=>{
-//	res.end(JSON.stringify(process.env));
-//});
-//
+app.post(["/like", "/dislike"], (req, res)=>{
+	res.setHeader('Content-Type', 'application/json');
 
-//
-//app.get("/dbs", (req, res)=>{
-//	cloudant.db.list(function(err, allDbs) {
-//		res.end(JSON.stringify(allDbs));
-//	});
-//});
-//
-//app.get("/location", (req, res)=>{
-//	cloudant.db.inser
-//});
+	var currDeviceID    = req.body.currDeviceID;
+	var carDeviceID     = req.body.carDeviceID;
+
+	async.waterfall([
+		//Find current car doc
+		(next)=>{
+			db.find({selector: {deviceID: currDeviceID}}, (err, data)=>{
+				if(data.docs.length) {
+					next(err, data.docs[0])
+				}else{
+					res.end(JSON.stringify({err: "device not found"}));
+				}
+			});
+		},
+		//Find car doc
+		(currCar, next)=>{
+			db.find({selector: {deviceID: carDeviceID}}, (err, data)=>{
+				if(data.docs.length) {
+					next(err, currCar, data.docs[0])
+				}else{
+					res.end(JSON.stringify({err: "device not found"}));
+				}
+			});
+		},
+		//Set like
+		(currCar, car, next)=>{
+			var likeKey = req.url == "/dislike" ? "dislike" : "like";
+
+			if(!car[likeKey]){
+				car[likeKey] = [];
+			}
+
+			if(car[likeKey].indexOf(currCar._id) == -1) {
+				car[likeKey].push(currCar._id);
+
+				db.insert(car, (err, data)=> {
+					next(err, data)
+				})
+			}else{
+				next(null)
+			}
+		}
+	], (err, result)=>{
+		if(err){
+			res.end(JSON.stringify({err: "Internal Error"}));
+		}else{
+			res.end(JSON.stringify({success: true}));
+		}
+	});
+});
+
+// Send the notification
+function notify(deviceId, data) {
+	var options = {
+		url: 'https://mobile.eu-gb.bluemix.net/imfpush/v1/apps/a324141f-64ee-4ce3-b3ce-84eb24401620/messages',
+		method: 'POST',
+		headers: {
+			"Content-Type": "application/json",
+			"Accept": "application/json",
+			"appSecret": "e7c45e29-a843-4acf-8975-7263b8bda9e5",
+			"Accept-Language": "en-US",
+			"Application-Mode": "SANDBOX"
+		},
+		body: JSON.stringify({
+			"message": {
+				"alert": JSON.stringify(data)
+			},
+			"target": {"deviceIds": [deviceId]}, "settings": {"apns": {}, "gcm": {}}
+		})
+	};
+
+	request(options, (error, response, body)=> {
+		if (!error && response.statusCode == 202) {
+			// Print out the response body
+			//res.end(body)
+		} else {
+			//res.end()
+		}
+	})
+}
+
+app.post("/message", (req, res)=>{
+	var currDeviceID = req.body.currDeviceID;
+	var carDeviceID  = req.body.carDeviceID;
+	var text = req.body.text;
+
+	async.waterfall([
+		//Find current car doc
+		(next)=>{
+			db.find({selector: {deviceID: currDeviceID}}, (err, data)=>{
+				if(data.docs.length) {
+					next(err, data.docs[0])
+				}else{
+					res.end(JSON.stringify({err: "device not found"}));
+				}
+			});
+		},
+		//Find car doc
+		(currCar, next)=>{
+			db.find({selector: {deviceID: carDeviceID}}, (err, data)=>{
+				if(data.docs.length) {
+					next(err, currCar, data.docs[0])
+				}else{
+					res.end(JSON.stringify({err: "device not found"}));
+				}
+			});
+		},
+		//Send notification
+		(currCar, car, next)=>{
+			//ToDo: Add connection check
+			notify(carDeviceID, { from: currCar, text: text});
+			next(null);
+		}
+	], (err, result)=>{
+		if(err){
+			res.end(JSON.stringify({err: "Internal Error"}));
+		}else{
+			res.end(JSON.stringify({success: true}));
+		}
+	});
+});
+
+
 
 var port = (process.env.VCAP_APP_PORT || 3000);
 app.listen(port);
