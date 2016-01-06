@@ -56,8 +56,7 @@ app.get('/publicServices/generateToken', function(req, res) {
 		}, function(err) {
 			console.log(err);
 		});
-	}
-);
+	});
 
 //create another backend service endpoint, and protect it with imf-backend-strategy
 app.get('/protectedServices/test', passport.authenticate('imf-backend-strategy', {session: false }),
