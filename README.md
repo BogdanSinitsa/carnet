@@ -1,6 +1,6 @@
 ##Endpoints
 
-**http://carnet.eu-gb.mybluemix.net/create-account** - POST
+**http://zecarnet.eu-gb.mybluemix.net/create-account** - POST
 
 * params: 
     - deviceID
@@ -8,20 +8,20 @@
     - make
     - model
 
-**http://carnet.eu-gb.mybluemix.net/update-location** - PUT
+**http://zecarnet.eu-gb.mybluemix.net/update-location** - PUT
 
 * params:
     - deviceID
     - lon
     - lat
 
-**http://carnet.eu-gb.mybluemix.net/[like|dislike]** - POST
+**http://zecarnet.eu-gb.mybluemix.net/[like|dislike]** - POST
 
 * params:
     - currDeviceID
     - carDeviceID
 
-**http://carnet.eu-gb.mybluemix.net/message** - POST
+**http://zecarnet.eu-gb.mybluemix.net/message** - POST
 
 * params: 
     - currDeviceID

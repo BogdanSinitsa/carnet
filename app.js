@@ -67,8 +67,9 @@ app.get('/protectedServices/test', passport.authenticate('imf-backend-strategy',
 
 var Cloudant = require('cloudant');
 
-var username = "60ae5ee0-cfa2-4da3-b5a4-8a79e1466b37-bluemix";
-var password = "1b2f3ea175e745f689de62da9df0675082897c3653f477785a94fe8046e285fe";
+//ToDo: move to config
+var username = "8092fc83-a449-4234-a28e-0897fd7637ac-bluemix";
+var password = "42c664bbcf55e0449237e006e151e5acf2250e40aafef1d596b36fcddc2ebfa3";
 var cloudant = Cloudant({account:username, password:password});
 var db = cloudant.db.use("carnetdb");
 
@@ -259,12 +260,12 @@ app.post(["/like", "/dislike"], (req, res)=>{
 // Send the notification
 function notify(deviceId, data) {
 	var options = {
-		url: 'https://mobile.eu-gb.bluemix.net/imfpush/v1/apps/a324141f-64ee-4ce3-b3ce-84eb24401620/messages',
+		url: 'https://mobile.eu-gb.bluemix.net/imfpush/v1/apps/d43573b3-7324-4cff-9a1b-70a62bbc3316/messages',
 		method: 'POST',
 		headers: {
 			"Content-Type": "application/json",
 			"Accept": "application/json",
-			"appSecret": "e7c45e29-a843-4acf-8975-7263b8bda9e5",
+			"appSecret": "0481576e-2e8a-4484-854c-5e5952a78a53",
 			"Accept-Language": "en-US",
 			"Application-Mode": "SANDBOX"
 		},
